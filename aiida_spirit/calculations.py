@@ -405,12 +405,20 @@ class SpiritCalculation(CalcJob):
         """
 
         run_opts = self.inputs.run_options.get_dict()
-        mc_configuration = run_opts["mc_configuration"]
+        mc_configuration = run_opts.get("mc_configuration")
 
-        keys = ["n_thermalisation", "n_decorrelation", "n_samples", "n_temperatures", "T_start", "T_end"]
+        # keys and default values for mc_configuration entries
+        mc_keys = [ 
+                    ("n_thermalisation", 10**4), 
+                    ("n_decorrelation", 2), 
+                    ("n_samples", 10**5), 
+                    ("n_temperatures", 60), 
+                    ("T_start", 0.1),
+                    ("T_end", 15)
+                ]
 
-        for k in keys:
-            script += "{:20} = {}".format(k, mc_configuration[k])
+        for k,v in mc_keys:
+            script += "{:20} = {}".format(k, mc_configuration.get(k,v))
 
         script += """
         sample_temperatures     = np.linspace(T_start, T_end, n_temperatures)
@@ -423,11 +431,10 @@ class SpiritCalculation(CalcJob):
 
         with script.state_block():
             script += "NOS = system.get_nos(p_state)"
-
+            script.configuration("plus_z")
             # Loop over temperatures
             with script.block("for iT, T in enumerate(sample_temperatures):"):
                 script += "parameters.mc.set_temperature(p_state, T)"
-                script.configuration("plus_z")
                 script += """
                 # Cumulative average variables
                 E  = 0
@@ -445,8 +452,7 @@ class SpiritCalculation(CalcJob):
 
                 for n in range(n_samples):
                     # Run decorrelation
-                    for i_decorr in range(n_decorrelation):
-                        simulation.single_shot(p_state) # one MC iteration
+                    simulation.n_shot(p_state, n_decorrelation)
                     # Get energy
                     E_local = system.get_energy(p_state) / NOS
                     # Get magnetization
